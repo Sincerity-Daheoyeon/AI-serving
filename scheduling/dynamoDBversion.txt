@@ -1,0 +1,180 @@
+import datetime
+import os
+from flask import Flask, request, jsonify
+import boto3
+import time
+
+from flask.cli import load_dotenv
+import schedule
+import threading
+from boto3.dynamodb.conditions import Key
+
+app = Flask(__name__)
+
+# AWS 설정
+# .env 파일 로드
+load_dotenv()
+
+# DynamoDB 연결
+dynamodb = boto3.resource(
+    'dynamodb',
+    aws_access_key_id=os.getenv('AWS_ACCESS_KEY_ID'),
+    aws_secret_access_key=os.getenv('AWS_SECRET_ACCESS_KEY'),
+    region_name=os.getenv('AWS_REGION')
+)
+# s3 = boto3.client('s3')
+
+# DynamoDB 테이블
+reader_test_table = dynamodb.Table('ReaderTest')
+patients_table = dynamodb.Table('Patients')
+queue_table = dynamodb.Table('Queue')
+output_table = dynamodb.Table('Output')
+
+# 싱글스레드 모델 실행 플래그
+ai_working = False
+
+@app.route('/process', methods=['POST'])
+def process_json():
+    """작업을 Queue에 추가"""
+    # JSON 파일 수신
+    data = request.json
+    reader_test_id = data.get('id')
+    type = data.get('type')
+    if not reader_test_id:
+        return jsonify({"error": "Missing ReaderTest ID"}), 400
+
+    # ReaderTest 테이블에서 이미지 정보 가져오기
+    reader_test_item = reader_test_table.get_item(Key={'id':f"{type}/{reader_test_id}"}).get('Item')
+    if not reader_test_item:
+        return jsonify({"error": "ReaderTest ID not found"}), 404
+
+    image_ids = reader_test_item.get('Image', [])
+    if not isinstance(image_ids, list):
+        return jsonify({"error": "Invalid image format in ReaderTest"}), 400
+
+    # Patients 테이블에서 이미지 정보로 작업 생성
+    for image_id in image_ids:
+        timestamp = datetime.datetime.now().isoformat()
+        task_id = f"task_{reader_test_id}_{image_id}_{int(datetime.datetime.now().timestamp() * 1000)}"
+        queue_table.put_item(Item={
+            "task_id": task_id, #변환작업 고유id
+            "status": "PENDING",    #작업 상태
+            "timestamp": timestamp, # 작업 생성 시간 -> fifo로 priority주기
+            "reader_test_id": reader_test_id,   #연결된 readerTest Id
+            "image_id": image_id,   #작업할 이미지의 고유id(readerTest/{type}/{id}/Image[n]의 내용값. src)
+        })
+
+    return jsonify({"message": "Tasks added to queue"}), 200
+def get_patient_meta_by_src(image_src):
+    try:
+        # GSI를 사용해 src로 항목 검색
+        response = patients_table.query(
+            IndexName='src-index',  # GSI 이름
+            KeyConditionExpression=Key('image.src').eq(image_src)
+        )
+        
+        # 검색 결과에서 첫 번째 항목의 메타정보 추출
+        items = response.get('Items', [])
+        if not items:
+            print(f"No patient found for src: {image_src}")
+            return None
+        
+        patient_meta = items[0].get('meta', {})
+        print(f"Patient meta found: {patient_meta}")
+        return patient_meta
+    except Exception as e:
+        print(f"Error retrieving patient meta: {e}")
+        return None
+
+def fetch_next_task():
+    """Queue에서 PENDING 상태의 가장 오래된 작업 가져오기"""
+    response = queue_table.scan(
+        FilterExpression="status = :status",
+        ExpressionAttributeValues={":status": "PENDING"}
+    )
+    tasks = response.get('Items', [])
+    if not tasks:
+        return None 
+
+    # timestamp 기준으로 정렬
+    tasks.sort(key=lambda x: x['timestamp'])
+    return tasks[0]  # 가장 오래된 작업 반환
+
+
+def run_model_task(task):
+    """모델 실행 로직"""
+    global ai_working
+    try:
+        print(f"Processing task: {task}")
+        
+        # Meta 데이터 가져오기
+        patient_meta = get_patient_meta_by_src(task['image_id'])
+        if not patient_meta:
+            print(f"Meta not found for image_id: {task['image_id']}")
+            update_task_status(task['task_id'], "FAILED")
+            return
+
+        # 모델 실행 (여기서 모델 호출)
+        time.sleep(5)  # 모델 실행 대기 시뮬레이션
+
+        # Output Table에 저장
+        output_table.put_item(Item={
+            'task_id': task['task_id'],
+            'image_id': task['image_id'],
+            'result': 'Success',  # 예제 결과
+            'meta': patient_meta
+        })
+
+        print(f"Task completed: {task}")
+        update_task_status(task['task_id'], "COMPLETED")
+    except Exception as e:
+        print(f"Error processing task {task['task_id']}: {str(e)}")
+        update_task_status(task['task_id'], "FAILED")
+    finally:
+        ai_working = False
+
+
+def update_task_status(task_id, status):
+    """작업 상태 업데이트"""
+    queue_table.update_item(
+        Key={"task_id": task_id},
+        UpdateExpression="SET #status = :status",
+        ExpressionAttributeNames={"#status": "status"},
+        ExpressionAttributeValues={":status": status}
+    )
+    print(f"Task {task_id} updated to {status}.")
+
+
+def task_scheduler():
+    """스케줄러: Queue에서 작업을 하나씩 가져와 실행"""
+    global ai_working
+    if ai_working:
+        return  # 현재 작업 중이면 아무 작업도 하지 않음
+
+    task = fetch_next_task()
+    if not task:
+        print("No pending tasks in the queue.")
+        return
+
+    # 작업 실행
+    ai_working = True
+    update_task_status(task['task_id'], "IN_PROGRESS")
+    run_model_task(task)
+
+    
+def schedule_runner():
+    """스케줄링을 별도 스레드에서 실행"""
+    while True:
+        schedule.run_pending()
+        time.sleep(1)
+
+
+# 스케줄링 설정
+schedule.every(1).seconds.do(task_scheduler)
+
+if __name__ == '__main__':
+    # 스케줄러 스레드 실행
+    threading.Thread(target=schedule_runner, daemon=True).start()
+
+    # Flask 서버 실행
+    app.run(host='127.0.0.1', port=5000)
