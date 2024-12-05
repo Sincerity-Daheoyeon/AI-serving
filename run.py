@@ -23,8 +23,8 @@ def process_json():
 
 if __name__ == '__main__':
     # 스케줄러 스레드 실행
-    threading.Thread(target=schedule_runner, daemon=True).start()
     run(["python", "DB.Dbconfig.py"], check=True)
+    run(["python", "scheduling.scheduler.py"], check=True)
 
     # Flask 서버 실행
     app.run(host='127.0.0.1', port=5000)

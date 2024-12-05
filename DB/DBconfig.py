@@ -17,6 +17,8 @@ reader_test_table = db.reference("ReaderTest")
 queue_table = db.reference("Queue")
 patients_table = db.reference("Patients")
 output_table = db.reference("Output")
+# s3 참조키값
+bucket_name = "your-s3-bucket-name"  # S3 버킷 이름
 
 # DB 참조를 export
-__all__ = ["reader_test_table", "queue_table", "patients_table", "output_table"]
+__all__ = ["bucket_name", "reader_test_table", "queue_table", "patients_table", "output_table"]
