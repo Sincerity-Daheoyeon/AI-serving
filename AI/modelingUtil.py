@@ -10,6 +10,8 @@ from schedule import fetch_next_task
 from boto3.dynamodb.conditions import Key
 from tensorflow.keras.models import load_model
 
+from scheduling.loadToDB import increment_processed_images_and_check
+
 np.random.seed(0)
 tensorflow.random.set_seed(0)
 
@@ -96,14 +98,18 @@ def run_model_task(task_data, model):
                 raise ValueError('num_class must be 2 or 4')
 '''
             # 결과 저장
-        output_table.child(task_data['reader_test_id']).update({
+       
+        output_table.child(task_data['reader_test_id']).update({ #1234t54y63421536 table/readerid/tasks/taskid에 저장.
             task_data['task_id']: {
                 'image_id': task_data['image_id'],
                 'result': result,
                 'meta': patient_meta
             }
         })
-
+        # outputTable에 처리된 task개수 저장 
+        # 전체 task가 처리가 끝났는지 확인->끝났으면 back에 신호 수신
+        increment_processed_images_and_check(task_data['reader_test_id'])
+        
         print(f"Task completed: {task_data}")
         update_task_status(task_data['task_id'], "COMPLETED")
         return True
@@ -111,7 +117,7 @@ def run_model_task(task_data, model):
         print(f"Error processing task {task_data['task_id']}: {str(e)}")
         update_task_status(task_data['task_id'], "FAILED")
         return False
-   
+
 def get_patient_meta_by_src(image_src):
     try:
         # GSI를 사용해 src로 항목 검색
