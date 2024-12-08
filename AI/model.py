@@ -5,9 +5,7 @@ from transformers import SwinForImageClassification
 def return_model_by_type(type):
     if type == 'Classification':
         model_name = "microsoft/swin-tiny-patch4-window7-224"
-        weights_dir = os.getenv("WEIGHTS_DIR")
-        weights_file = os.getenv("500_swin_model_weights.pth")
-        weights_path = os.path.join(weights_dir, weights_file)
+        weights_path = "./WEIGHTS_DIR/500_swin_model_weights.pth"
         device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
         model = SwinForImageClassification.from_pretrained(
