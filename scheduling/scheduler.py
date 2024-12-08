@@ -1,18 +1,15 @@
-from flask import app
 import time
-import AI.init
-from model.model import Model
+import os
+import sys
 
-model = Model(
-        input_shape_structured=(3,),
-        input_shape_unstructured=(None, 128, 128, 1),
-    )
-# model.load_weights(
-    #     os.path.join(config['WEIGHT']['PATH'], config['WEIGHT']['FILE']),
-    # )
+# 프로젝트 루트 디렉토리를 Python 경로에 추가
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
+from AI import run_model  # AI/__init__.py에서 정의된 run_model 함수 가져오기
+
 while True:
     try:
-        AI.init.run_model()
+        run_model()  # 함수 호출
     except Exception as e:
-        print(e)
-    time.sleep(2)
+        print(f"Error during run_model execution: {e}")
+    time.sleep(10)

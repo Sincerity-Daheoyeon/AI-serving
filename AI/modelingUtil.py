@@ -1,12 +1,11 @@
 from io import BytesIO
-import time
-import boto3
+
 import cv2
 import numpy as np
-import schedule
 import tensorflow
-from DB.DBconfig import bucket_name, output_table, patients_table, queue_table
-from schedule import fetch_next_task
+import torch
+from DB.DBconfig import bucket_name, output_table, patients_table, queue_table, s3
+from DB.DBconfig import bucket_name
 from boto3.dynamodb.conditions import Key
 
 from scheduling.loadToDB import increment_processed_images_and_check
@@ -26,18 +25,7 @@ def run_model_task(task_data, model):
             print(f"Meta not found for image_id: {task_data['image_id']}")
             update_task_status(task_data['task_id'], "FAILED")
             return False
-        # 데이터 전처리
-        BMI = patient_meta['height'] / (patient_meta['weight'] ** 2)
-
-        # structured = np.asarray([
-        #     float(patient_meta['age']),
-        #     0. if patient_meta['sex'] == 'male' else 1.,
-        #     float(BMI),
-        # ])
-        # structured = np.expand_dims(structured, axis=0)
-
-        # load .npz
-        image_src = task_data['image_id']
+        image_src = task_data['image_id'].split('/')[-1]
         png_data = get_png_from_s3(bucket_name, image_src)  # 메모리 내에서 PNG 로드
         npzFile = png_to_npz(png_data)  # PNG를 NPZ로 변환
 
@@ -61,49 +49,29 @@ def run_model_task(task_data, model):
                 ]
             )
 
-        unstructured = np.expand_dims(unstructured, axis=-1)
-        unstructured = np.expand_dims(unstructured, axis=0)
-        # print("!!!", unstructured.shape)
-        # 모델 실행 (여기서 모델 호출)
-        time.sleep(10)  # 모델 실행 대기 시뮬레이션 5초에서 60초. 모델 받아보고 결정하기
-        # 예시: 모델 입력 데이터 준비
+        unstructured = np.transpose(unstructured, (0, 3, 1, 2))  # (batch_size, channels, height, width)
+        print("!!unstructured.shape!!: ", unstructured.shape)
+        unstructured_tensor = torch.tensor(unstructured, dtype=torch.float32).to(model.device)
         # 모델 호출
-        prediction = model(unstructured)
-        # check is nan => clip
-        if np.isnan(prediction).any():
-            prediction = np.zeros_like(prediction)
-        logits = prediction.logits  # 로짓 값
-        result = np.argmax(
-                    [
-                        prediction[0] + prediction[1],
-                        prediction[2] + prediction[3],
-                        ]
-                )
-        '''
-        num_class = info['num_class']
+        prediction = model(unstructured_tensor)
+        # NaN값만 0으로 대체
+        prediction = np.nan_to_num(prediction, nan=0.0) 
 
-        if num_class == 2:
-            result = np.argmax(
-                [
-                    prd[0] + prd[1],
-                    prd[2] + prd[3],
-                    ]
-            )
-
-        elif num_class == 4:
-            result = np.argmax(prd)
-
+        
+        # 결과 저장
+        
+        if isinstance(prediction, torch.Tensor):
+            logits = prediction.detach().cpu().numpy()
         else:
-                raise ValueError('num_class must be 2 or 4')
-'''
-            # 결과 저장
-       
-        output_table.child(task_data['reader_test_id']).update({ #1234t54y63421536 table/readerid/tasks/taskid에 저장.
-            task_data['task_id']: {
-                'image_id': task_data['image_id'],
-                'result': result,
-                'meta': patient_meta
-            }
+            logits = prediction.logits.detach().cpu().numpy()        
+        logits_np = logits.detach().cpu().numpy()  # NumPy 배열로 변환
+        # Softmax로 확률 계산
+        probabilities = torch.softmax(torch.tensor(logits_np), dim=1).numpy()
+
+        output_table.child(task_data['reader_test_id']).child('tasks').child(task_data['task_id']).set({
+            'image_id': image_src,
+            'result': probabilities.tolist(),
+            'meta': patient_meta
         })
         # outputTable에 처리된 task개수 저장 
         # 전체 task가 처리가 끝났는지 확인->끝났으면 back에 신호 수신
@@ -148,13 +116,18 @@ def update_task_status(task_id, status):
 
 def get_png_from_s3(bucket_name, image_src):
     """S3에서 PNG 파일 읽기 (메모리 내 처리)"""
-    s3 = boto3.client('s3')
-    response = s3.get_object(Bucket=bucket_name, Key=image_src)
-    print(f"Downloaded {image_src} from S3")
-    
-    # PNG 파일 데이터를 메모리로 로드
-    image_data = BytesIO(response['Body'].read())
-    return image_data
+    try:
+        # S3에서 객체 가져오기
+        response = s3.get_object(Bucket=bucket_name, Key=image_src)
+        print(f"Downloaded {image_src} from S3 bucket: {bucket_name}")
+
+        # PNG 데이터를 메모리에 로드
+        image_data = BytesIO(response['Body'].read())
+        return image_data
+
+    except Exception as e:
+        print(f"Error retrieving {image_src} from S3: {str(e)}")
+        return None
 
 def png_to_npz(png_data):
     """PNG 데이터를 NumPy 배열로 변환하고 메모리 내에서 사용"""
@@ -165,7 +138,7 @@ def png_to_npz(png_data):
         raise ValueError("Failed to decode PNG data.")
 
     # 이미지 크기 조정 (128x128)
-    resized_image = cv2.resize(image, (128, 128))  # 모델 입력 형식으로 크기 조정
+    resized_image = cv2.resize(image, (224, 224))  # 초기 크기를 224x224로 맞춤
 
     # 모델 입력 형식에 맞게 차원 추가
     unstructured = np.expand_dims(resized_image, axis=0)  # (1, 128, 128)

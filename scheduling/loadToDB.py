@@ -1,8 +1,5 @@
 import datetime
-from firebase_admin import db
 from DB.DBconfig import output_table, reader_test_table, queue_table
-from AI.modelingUtil import isRunning,run_model_task, setRunning
-from Flask.server import send_completion_signal
 
 def process_tasks(reader_test_id, type):
     # ReaderTest 테이블에서 이미지 정보 가져오기
@@ -84,10 +81,14 @@ def increment_processed_images_and_check(reader_test_id):
         # 완료 여부 확인
         if total_images is not None and new_processed_images == total_images:
             print(f"All tasks completed for reader_test_id: {reader_test_id}")
-            send_completion_signal(reader_test_id)
+            notify_completion(reader_test_id)
 
         return {"message": f"Processed images incremented to {new_processed_images}"}
 
     except Exception as e:
         print(f"Error incrementing processed images for reader_test_id: {reader_test_id} - {e}")
         return {"error": str(e)}
+# scheduling/loadToDB.py
+def notify_completion(reader_test_id):
+    from Flask.server import send_completion_signal  # 지연 import
+    send_completion_signal(reader_test_id)
