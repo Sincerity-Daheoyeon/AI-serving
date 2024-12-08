@@ -12,7 +12,7 @@ model = Model(
     # )
 while True:
     try:
-        AI.init.run_model(model)
+        AI.init.run_model()
     except Exception as e:
         print(e)
     time.sleep(2)
