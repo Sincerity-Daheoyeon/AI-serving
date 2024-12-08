@@ -1,0 +1,5 @@
+pip install Flask
+pip install boto3
+pip install firebase-admin
+pip install torch
+pip install transfomer
