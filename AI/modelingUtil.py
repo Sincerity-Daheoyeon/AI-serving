@@ -8,7 +8,6 @@ import tensorflow
 from DB.DBconfig import bucket_name, output_table, patients_table, queue_table
 from schedule import fetch_next_task
 from boto3.dynamodb.conditions import Key
-from tensorflow.keras.models import load_model
 
 from scheduling.loadToDB import increment_processed_images_and_check
 
@@ -30,12 +29,12 @@ def run_model_task(task_data, model):
         # 데이터 전처리
         BMI = patient_meta['height'] / (patient_meta['weight'] ** 2)
 
-        structured = np.asarray([
-            float(patient_meta['age']),
-            0. if patient_meta['sex'] == 'male' else 1.,
-            float(BMI),
-        ])
-        structured = np.expand_dims(structured, axis=0)
+        # structured = np.asarray([
+        #     float(patient_meta['age']),
+        #     0. if patient_meta['sex'] == 'male' else 1.,
+        #     float(BMI),
+        # ])
+        # structured = np.expand_dims(structured, axis=0)
 
         # load .npz
         image_src = task_data['image_id']
@@ -47,11 +46,11 @@ def run_model_task(task_data, model):
             allow_pickle=True,
         )['cube']
 
-        # print("!!!", unstructured.shape)
+        # 이미지 크기 조정 (224x224로 변환)
         unstructured = np.asarray([
             cv2.resize(
                 src=unstructured[..., i],
-                dsize=(128, 128),
+                dsize=(224, 224),
             ) for i in range(unstructured.shape[-1])
         ])
 
@@ -67,13 +66,13 @@ def run_model_task(task_data, model):
         # print("!!!", unstructured.shape)
         # 모델 실행 (여기서 모델 호출)
         time.sleep(10)  # 모델 실행 대기 시뮬레이션 5초에서 60초. 모델 받아보고 결정하기
-        model.load_weight("")
-            # 예시: 모델 입력 데이터 준비
-            # 모델 호출
-        prediction = model.predict([structured, unstructured],)[0]
+        # 예시: 모델 입력 데이터 준비
+        # 모델 호출
+        prediction = model(unstructured)
         # check is nan => clip
         if np.isnan(prediction).any():
             prediction = np.zeros_like(prediction)
+        logits = prediction.logits  # 로짓 값
         result = np.argmax(
                     [
                         prediction[0] + prediction[1],
