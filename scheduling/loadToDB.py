@@ -36,6 +36,7 @@ def process_tasks(reader_test_id, type):
             "status": "PENDING",  # 작업 상태
             "timestamp": timestamp,  # 작업 생성 시간
             "reader_test_id": reader_test_id,  # 연결된 ReaderTest ID
+            "type": type,
             "image_id": image_id,  # 작업 이미지 ID, src
         })
 
