@@ -3,3 +3,4 @@ serviceAccountKey.json
 .env
 500_swin_model_weights.pth
 jcloud-gpu.pem
+WEIGHTS_DIR/
