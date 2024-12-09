@@ -8,7 +8,7 @@ def process_tasks(reader_test_id, type):
     if not reader_test_item:
         return {"error": "ReaderTest ID not found"}
 
-    image_ids = reader_test_item.get('Image_id', []) #$!!#@$%#$%@%@#@@#@$#@%#@%@#$%
+    image_ids = reader_test_item.get('image', []) #$!!#@$%#$%@%@#@@#@$#@%#@%@#$%
     if not isinstance(image_ids, list):
         return {"error": "Invalid image format in ReaderTest"}
     # 총 이미지 개수

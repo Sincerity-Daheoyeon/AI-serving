@@ -4,11 +4,13 @@ import requests
 from scheduling.loadToDB import process_tasks
 COMPLETION_SIGNAL_URL = "https://your-backend-url.com/completion_signal"  # 백엔드 URL
 
-def process_json():
+def process_json(request):
     # JSON 파일 수신
     data = request.json
-    reader_test_id = data.get('id')
+    reader_test_id = data.get('reader_test_id')
     type = data.get('type')
+    print(f"Received JSON: {data}")
+
     if not reader_test_id or not type:
         return jsonify({"error": "Missing ReaderTest ID or Type"}), 400
     # 작업 처리 호출

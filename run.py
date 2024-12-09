@@ -2,7 +2,7 @@ import os
 from subprocess import run
 import sys
 import threading
-from flask import Flask
+from flask import Flask, request
 from Flask.server import process_json
 
 app = Flask(__name__)
@@ -10,9 +10,9 @@ app = Flask(__name__)
 sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 
 # POST 요청을 처리하는 엔드포인트 설정
-@app.route('/process', methods=['POST'])
+@app.route('/reader-test', methods=['POST'])
 def handle_process():
-    return process_json()
+    return process_json(request)
 
 @app.route('/')
 def hello():
