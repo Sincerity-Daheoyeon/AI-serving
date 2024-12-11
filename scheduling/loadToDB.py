@@ -27,7 +27,7 @@ def process_tasks(reader_test_id, type):
     # 큐에 작업 추가
     for image_id in image_ids:
         timestamp = datetime.datetime.now().isoformat()
-        task_id = f"task_{reader_test_id}_{image_id}_{int(datetime.datetime.now().timestamp() * 1000)}"
+        task_id = f"task_{reader_test_id}_{int(datetime.datetime.now().timestamp() * 1000)}"
         queue_table.child(task_id).set({
             "task_id": task_id,  # 작업 고유 ID #RRQEW@#$!TEYWETYR%^@#YWQ%TYWUEIY$WQ#%^WUIT
             "status": "PENDING",  # 작업 상태
@@ -80,7 +80,7 @@ def increment_processed_images_and_check(reader_test_id):
 
         # 완료 여부 확인
         if total_images is not None and new_processed_images == total_images:
-            print(f"All tasks completed for reader_test_id: {reader_test_id}")
+            print(f"#!@#@!!@#!@#@!#All tasks completed for reader_test_id: {reader_test_id}")
             notify_completion(reader_test_id)
 
         return {"message": f"Processed images incremented to {new_processed_images}"}
