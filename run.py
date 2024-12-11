@@ -12,6 +12,7 @@ sys.path.append(os.path.abspath(os.path.dirname(__file__)))
 # POST 요청을 처리하는 엔드포인트 설정
 @app.route('/reader-test', methods=['POST'])
 def handle_process():
+    print("신호 받았다~~~~~~~~~~~~~~~~~~~~~~~~₩")
     return process_json(request)
 
 @app.route('/')
@@ -20,7 +21,7 @@ def hello():
 
 def run_flask():
     print("서버 시작합니다~~~~~~~~~")
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=3300)
 
 if __name__ == '__main__':
     # Flask 서버를 별도의 스레드에서 실행
